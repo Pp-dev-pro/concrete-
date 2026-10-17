@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mixwise · Concrete strength predictor</title>
+<meta name="description" content="Predict concrete compressive strength with XGBoost and a second ML model.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧱</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="bg" aria-hidden="true"><i></i><i></i><i></i></div>
+
+<!-- Splash -->
+<div id="splash" role="presentation">
+  <svg class="cube" viewBox="0 0 120 120" aria-hidden="true">
+    <defs>
+      <clipPath id="cubeClip"><path d="M60 8 L108 34 L108 86 L60 112 L12 86 L12 34 Z"/></clipPath>
+      <linearGradient id="gs" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#ffb020"/><stop offset="1" stop-color="#ff7a18"/>
+      </linearGradient>
+    </defs>
+    <g clip-path="url(#cubeClip)">
+      <rect class="layer l1" x="0" y="82" width="120" height="40" fill="#5b6475"/>
+      <rect class="layer l2" x="0" y="62" width="120" height="30" fill="#8a94a7"/>
+      <rect class="layer l3" x="0" y="42" width="120" height="30" fill="#3ddbc0"/>
+      <rect class="layer l4" x="0" y="0"  width="120" height="52" fill="url(#gs)"/>
+    </g>
+    <path class="outline" d="M60 8 L108 34 L108 86 L60 112 L12 86 L12 34 Z M12 34 L60 60 L108 34 M60 60 L60 112" fill="none" stroke="#e8ecf3" stroke-width="2.4" stroke-linejoin="round"/>
+  </svg>
+  <h1 class="splash-title">Mixwise</h1>
+  <p class="splash-sub">Mixing the numbers…</p>
+  <div class="splash-bar"><span></span></div>
+</div>
+
+<!-- App -->
+<main id="app" class="app" hidden>
+  <header class="top">
+    <div class="brand">
+      <svg viewBox="0 0 120 120" width="28" height="28" aria-hidden="true"><path d="M60 8 L108 34 L108 86 L60 112 L12 86 L12 34 Z" fill="#ffb020"/><path d="M12 34 L60 60 L108 34 M60 60 L60 112" fill="none" stroke="#0a0f1a" stroke-width="7" stroke-linejoin="round"/></svg>
+      <span>Mixwise</span>
+    </div>
+    <nav class="steps" aria-label="Progress">
+      <button class="step is-active" id="navMix" type="button">Mix design</button>
+      <button class="step" id="navResults" type="button" disabled>Analysis</button>
+    </nav>
+  </header>
+
+  <!-- Input view -->
+  <section id="viewInput" class="view">
+    <div class="hero">
+      <h2>Predict compressive strength before you pour.</h2>
+      <p>Set the eight mix parameters. Two trained models return a 28-day style strength estimate in MPa, and you get a side-by-side analysis.</p>
+    </div>
+
+    <form id="mixForm" novalidate>
+      <div id="grid" class="grid"></div>
+
+      <div class="actions">
+        <button type="button" id="resetBtn" class="btn ghost">Reset to sample mix</button>
+        <button type="submit" class="btn primary">
+          <span>Predict strength</span>
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+    </form>
+  </section>
+
+  <!-- Results view -->
+  <section id="viewResults" class="view" hidden>
+    <div class="hero slim">
+      <h2>Strength analysis</h2>
+      <p id="resultsLead">Comparing every model on your mix.</p>
+    </div>
+
+    <div id="models" class="models"></div>
+
+    <div class="panel-row">
+      <article class="panel" id="comparePanel">
+        <h3>Model comparison</h3>
+        <div id="compareChart"></div>
+        <p class="note" id="compareNote"></p>
+      </article>
+      <article class="panel" id="classPanel">
+        <h3>Strength class</h3>
+        <div id="classBody"></div>
+      </article>
+    </div>
+
+    <div class="panel-row">
+      <article class="panel">
+        <h3>Mix composition by mass</h3>
+        <div id="compChart"></div>
+      </article>
+      <article class="panel">
+        <h3>Mix ratios</h3>
+        <dl id="ratios" class="ratios"></dl>
+      </article>
+    </div>
+
+    <div class="actions">
+      <button type="button" id="editBtn" class="btn ghost">Edit mix</button>
+      <button type="button" id="rerunBtn" class="btn primary">Run again</button>
+    </div>
+  </section>
+</main>
+
+<!-- Credentials dialog -->
+<dialog id="credDialog" aria-labelledby="credTitle">
+  <form method="dialog" id="credForm" autocomplete="off">
+    <h3 id="credTitle">Connect your prediction API</h3>
+    <p class="muted">Paste your Zoho Catalyst credentials. They stay in this browser and are sent only to the endpoint below.</p>
+
+    <label class="field">
+      <span>Access token</span>
+      <input type="password" id="fToken" placeholder="1000.xxxxxxxx.xxxxxxxx" required>
+    </label>
+
+    <div class="two">
+      <label class="field">
+        <span>XGBoost endpoint key</span>
+        <input type="password" id="fKey1" required>
+      </label>
+      <label class="field">
+        <span>Model 2 endpoint key</span>
+        <input type="password" id="fKey2" required>
+      </label>
+    </div>
+
+    <div class="two">
+      <label class="field">
+        <span>Catalyst org ID</span>
+        <input type="text" id="fOrg" required>
+      </label>
+      <label class="field">
+        <span>Environment</span>
+        <select id="fEnv"><option>Development</option><option>Production</option></select>
+      </label>
+    </div>
+
+    <label class="field">
+      <span>Prediction URL</span>
+      <input type="url" id="fUrl" required>
+    </label>
+
+    <label class="check"><input type="checkbox" id="fRemember" checked> <span>Remember for this browser tab</span></label>
+    <p class="error" id="credError" role="alert" hidden></p>
+
+    <div class="dialog-actions">
+      <button type="button" class="btn ghost" id="credCancel">Cancel</button>
+      <button type="button" class="btn ghost" id="demoBtn" title="Uses made-up numbers, not your models">Preview with sample output</button>
+      <button type="submit" class="btn primary" id="credGo">Run models</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="loading" class="loading" hidden>
+  <div class="spinner"></div>
+  <p>Asking both models…</p>
+</div>
+
+<script src="js/config.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
